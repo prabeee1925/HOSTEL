@@ -40,7 +40,7 @@ D. ADMIN (warden only)
  Create a PIN. The Admin tab then stays on that phone. Do not share the #admin link.
 
 E. NOTES
- - Rooms B204, B 204 and B-204 are treated as the same room. The admin dashboard groups every member with the same room number into one room card.
+ - Example registration: Prabi, room A-193. Room numbers with or without spaces/hyphens are normalized before grouping. The admin dashboard groups every member with the same room number into one room card.
  - ON is attributed to the member who reported ON. OFF is room-wide: one member marking an appliance OFF updates that appliance to OFF for everyone in the room. The warden can mark both appliances OFF for the whole room after checking it.
  - The app needs internet the first time. After that it keeps working with the last data it saw.
  - SECURITY: the rules above let anyone who has the app read and change rooms. That is fine
