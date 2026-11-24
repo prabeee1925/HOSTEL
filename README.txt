@@ -1,5 +1,5 @@
-SMART HOSTEL ELECTRICITY - SHARED ONLINE VERSION
-All phones save rooms to one online database (Firebase). Each student registers their name and room number once. Their phone remembers their member profile. On a new phone, enter the room number and tap the already-registered name. The warden dashboard shows one card per room with every member listed inside. Up to 10 students can register under the same room number, each with a separate name and leaving time.
+SMART HOSTEL ELECTRICITY - SHARED ONLINE VERSION (MODERN UI)
+The refreshed interface uses a modern navy/purple dashboard style with responsive layouts for phones. All phones save rooms to one online database (Firebase). Each student registers their name and room number once. Their phone remembers their member profile. On a new phone, enter the room number and tap the already-registered name. The warden dashboard shows one card per room with every member listed inside. Up to 10 students can register under the same room number, each with a separate name and leaving time. Light and fan states are shared by the room: ON is attributed to the student who marked it ON; when any member marks it OFF, every member sees OFF.
 
 FILES (keep all together): index.html, firebase-config.js, manifest.webmanifest, sw.js, icon-192.png, icon-512.png, README.txt
 
@@ -41,6 +41,7 @@ D. ADMIN (warden only)
 
 E. NOTES
  - Rooms B204, B 204 and B-204 are treated as the same room. The admin dashboard groups every member with the same room number into one room card.
+ - ON is attributed to the member who reported ON. OFF is room-wide: one member marking an appliance OFF updates that appliance to OFF for everyone in the room. The warden can mark both appliances OFF for the whole room after checking it.
  - The app needs internet the first time. After that it keeps working with the last data it saw.
  - SECURITY: the rules above let anyone who has the app read and change rooms. That is fine
    for a college project. Do not store private information. The admin PIN only hides the
