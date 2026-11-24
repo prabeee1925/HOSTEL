@@ -1,5 +1,5 @@
 SMART HOSTEL ELECTRICITY - SHARED ONLINE VERSION
-All phones save rooms to one online database (Firebase). The warden sees every student's room. Up to 10 students can register under the same room number, each with a separate name and leaving time.
+All phones save rooms to one online database (Firebase). Each student registers their name and room number once. Their phone remembers their member profile. On a new phone, enter the room number and tap the already-registered name. The warden dashboard shows one card per room with every member listed inside. Up to 10 students can register under the same room number, each with a separate name and leaving time.
 
 FILES (keep all together): index.html, firebase-config.js, manifest.webmanifest, sw.js, icon-192.png, icon-512.png, README.txt
 
@@ -40,7 +40,7 @@ D. ADMIN (warden only)
  Create a PIN. The Admin tab then stays on that phone. Do not share the #admin link.
 
 E. NOTES
- - Rooms B204, B 204 and B-204 are treated as the same room.
+ - Rooms B204, B 204 and B-204 are treated as the same room. The admin dashboard groups every member with the same room number into one room card.
  - The app needs internet the first time. After that it keeps working with the last data it saw.
  - SECURITY: the rules above let anyone who has the app read and change rooms. That is fine
    for a college project. Do not store private information. The admin PIN only hides the

@@ -40,6 +40,13 @@ label,.lab{font-size:.95rem;color:var(--mut)}
 .stat b{font-size:1.5rem;display:block}
 .room{border-top:1px solid var(--bd);padding:10px 0;display:flex;justify-content:space-between;gap:10px;align-items:center}
 .room small{color:var(--mut)}.room button{width:auto;padding:6px 12px;margin:0;min-height:36px}
+.room-card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin:12px 0}
+.room-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--bd)}
+.room-head strong{font-size:1.08rem}.room-meta{color:var(--mut);font-size:.88rem}
+.member-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--bd)}
+.member-row:last-child{border-bottom:0}.member-info{min-width:0;flex:1}.member-info small{display:block;color:var(--mut);overflow-wrap:anywhere}
+.member-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.member-actions button{width:auto;padding:6px 10px;margin:0;min-height:36px;font-size:.9rem}
+.member-name{font-weight:700}
 .banner{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bad);color:#fff;padding:12px;border-radius:10px;margin:8px 0;display:none;font-weight:600}
 .banner button{background:#fff;color:var(--bad);width:auto;padding:6px 12px;margin:6px 0 0}
 .hide{display:none}
@@ -92,11 +99,10 @@ details ul{margin:8px 0 0;padding-left:20px}
 <button onclick="register()">Register</button>
 <p class="msg" id="regMsg" aria-live="polite"></p>
 <h2 style="margin-top:14px">Already registered?</h2>
-<label for="loginName">Your name</label>
-<input id="loginName" placeholder="Enter your registered name" maxlength="40" autocomplete="name">
-<label for="loginRoom">Your room number</label>
-<input id="loginRoom" placeholder="e.g. B-204">
-<button class="sec" onclick="login()">Continue</button>
+<label for="loginRoom">Enter your room number</label>
+<input id="loginRoom" placeholder="e.g. B-204" maxlength="12">
+<button class="sec" onclick="findRoomMembers()">Show registered members</button>
+<div id="roomMembers" aria-live="polite"></div>
 <p class="msg" id="loginMsg" aria-live="polite"></p>
 </div>
 
@@ -165,11 +171,11 @@ details ul{margin:8px 0 0;padding-left:20px}
 <div class="stat"><b id="sWait">0</b>Waiting</div>
 <div class="stat"><b id="sAct">0</b>Needs action</div>
 </div>
-<p class="note">Needs action = Still ON + Not confirmed. Each row represents one student; roommates appear under the same room number.</p>
+<p class="note">Each room appears only once. Open a room card to see every registered member and that student's individual light, fan, leaving time and status.</p>
 <div class="row" style="margin-top:10px">
 <input id="q" placeholder="Search name or room" aria-label="Search name or room" oninput="renderAdmin()">
 <select id="flt" aria-label="Filter by status" onchange="renderAdmin()">
-<option value="">All statuses</option><option value="ALL_OFF">All OFF</option><option value="WAITING">Waiting</option><option value="STILL_ON">Still ON</option><option value="LATE">Not confirmed</option>
+<option value="">All room statuses</option><option value="ALL_OFF">All OFF (every member)</option><option value="WAITING">Waiting</option><option value="NEEDS_ACTION">Needs action</option>
 </select>
 </div>
 <div id="list"></div>
@@ -182,7 +188,7 @@ details ul{margin:8px 0 0;padding-left:20px}
 <button class="sec" onclick="logoutAdmin()">Log out</button>
 <button class="dng" onclick="clearAll()">Clear all data</button>
 </div>
-<p class="note">Students sharing a room have separate records and leaving times. Up to 10 students can register under one room number.</p>
+<p class="note">One dashboard card represents one room. Every member is listed inside that card. Each member has an individual record and leaving time; up to 10 members can register in one room.</p>
 </div>
 </div>
 </div>
@@ -518,24 +524,37 @@ async function register(){
   say("regMsg","Registration successful! You can now set your leaving time.","ok");
   await login(s.key);
 }
-async function login(k){
-  const rawRoom=typeof k==="string"?roomKeyOf(k):$("loginRoom").value.trim();
-  const name=typeof k==="string"?k.slice(k.indexOf("::")+2):$("loginName").value.trim();
-  const rk=norm(rawRoom),key=studentKey(name,rawRoom);
-  if(!name||!rk){say("loginMsg","Enter your registered name and room number.","bad");return}
+async function findRoomMembers(){
+  const rawRoom=$("loginRoom").value.trim(),rk=norm(rawRoom),area=$("roomMembers");
+  area.textContent="";
+  if(!rk){say("loginMsg","Please enter your room number.","bad");return}
   if(!cloudReady){say("loginMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
+  let members=[];
+  try{const sn=await db.collection("rooms").doc(docId(rk)).get();if(sn.exists)members=membersFromRoom(sn.data(),rk)}
+  catch(e){cloudFail(e);say("loginMsg","Could not load this room. Check the internet and try again.","bad");return}
+  if(!members.length){say("loginMsg","No students are registered in this room yet. Register first.","bad");return}
+  const heading=document.createElement("p");heading.className="note";heading.textContent="Registered members in Room "+(members[0].room||rawRoom)+" — tap your name once:";area.appendChild(heading);
+  members.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(m=>{
+    const b=document.createElement("button");b.className="sec";b.textContent=m.name+"  →";b.onclick=()=>login(m.key);area.appendChild(b);
+  });
+  say("loginMsg",members.length+" registered member"+(members.length===1?"":"s")+" found. Select your name; this phone will remember you.","ok");
+}
+async function login(key){
+  if(typeof key!=="string"||!key.includes("::")){say("loginMsg","First enter your room number and select your registered name.","bad");return}
+  if(!cloudReady){say("loginMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
+  const rk=roomKeyOf(key);
   let members=[];
   try{const sn=await db.collection("rooms").doc(docId(rk)).get();if(sn.exists)members=membersFromRoom(sn.data(),rk)}
   catch(e){cloudFail(e);return}
   const s=members.find(m=>m.key===key);
-  if(!s){say("loginMsg","Student not found in this room. Check your name and room number or register first.","bad");return}
+  if(!s){say("loginMsg","That member is no longer registered. Enter the room number again.","bad");return}
   me=key;store.set("hostelMe",me);
   if(!adminListening){students=members;meLoaded=true}
   listenMe();
   unlockAudio();keepAwake();
   renderStudent(true);
 }
-function logout(){me="";store.del("hostelMe");dismissBanner();if(!adminListening){students=[];meLoaded=false;if(unsubMe){unsubMe();unsubMe=null}}renderStudent(true)}
+function logout(){me="";store.del("hostelMe");dismissBanner();$("loginRoom").value="";$("roomMembers").textContent="";say("loginMsg","","");if(!adminListening){students=[];meLoaded=false;if(unsubMe){unsubMe();unsubMe=null}}renderStudent(true)}
 
 function setTime(){
   unlockAudio();keepAwake();
@@ -653,41 +672,64 @@ function adminLogin(){
 }
 function logoutAdmin(){adminOn=false;adminListen(false);initAdmin()}
 
+function roomStatus(members){
+  const states=members.map(statusOf);
+  if(states.some(st=>st==="STILL_ON"||st==="LATE"))return "NEEDS_ACTION";
+  if(states.every(st=>st==="ALL_OFF"))return "ALL_OFF";
+  return "WAITING";
+}
 function renderAdmin(){
-  rollover();
-  const all=students.map(s=>({s,st:statusOf(s)}));
-  const c=x=>all.filter(a=>a.st===x).length;
-  $("sTotal").textContent=new Set(all.map(a=>a.s.roomKey||norm(a.s.room))).size;
+  const groupsMap=new Map();
+  students.forEach(s=>{
+    const rk=s.roomKey||norm(s.room);
+    if(!groupsMap.has(rk))groupsMap.set(rk,[]);
+    groupsMap.get(rk).push(s);
+  });
+  const groups=Array.from(groupsMap.entries()).map(([rk,members])=>({
+    rk,room:members[0].room||rk,members,status:roomStatus(members)
+  }));
+  const c=x=>groups.filter(g=>g.status===x).length;
+  $("sTotal").textContent=groups.length;
   $("sOk").textContent=c("ALL_OFF");
   $("sWait").textContent=c("WAITING");
-  $("sAct").textContent=c("STILL_ON")+c("LATE");
+  $("sAct").textContent=c("NEEDS_ACTION");
   const q=$("q").value.trim().toLowerCase(),f=$("flt").value;
-  const order={STILL_ON:0,LATE:1,WAITING:2,ALL_OFF:3};
-  const rows=all.filter(a=>(!f||a.st===f)&&(!q||a.s.name.toLowerCase().includes(q)||a.s.room.toLowerCase().includes(q)))
-    .sort((a,b)=>order[a.st]-order[b.st]||a.s.room.localeCompare(b.s.room,undefined,{numeric:true}));
+  const order={NEEDS_ACTION:0,WAITING:1,ALL_OFF:2};
+  const rows=groups.filter(g=>(!f||g.status===f)&&(!q||g.room.toLowerCase().includes(q)||g.members.some(m=>m.name.toLowerCase().includes(q))))
+    .sort((a,b)=>order[a.status]-order[b.status]||a.room.localeCompare(b.room,undefined,{numeric:true}));
   const list=$("list");list.textContent="";
-  if(!rows.length){const p=document.createElement("p");p.className="msg";p.textContent=all.length?"No matching students.":"No registered students yet. Press “Add demo rooms” to see an example.";list.appendChild(p)}
-  rows.forEach(({s,st})=>{
-    const fr=s.date===today();
-    const d=document.createElement("div");d.className="room";
-    const l=document.createElement("div");
-    const t=document.createElement("b");t.textContent="Room "+s.room+" · "+s.name+(s.demo?" (demo)":"");
-    const sp=document.createElement("span");sp.className=cls(st);sp.textContent=LABEL[st];
-    const sm=document.createElement("small");
-    sm.textContent="Light: "+((fr&&s.light)||"not told")+" · Fan: "+((fr&&s.fan)||"not told")+" · Leaves: "+(s.leaveTime||"not set")+(s.byAdmin?" · checked by admin":"");
-    l.append(t,document.createElement("br"),sp,document.createElement("br"),sm);
-    const b=document.createElement("button");b.className="sec";b.textContent="Remove";
-    b.onclick=()=>{if(confirm("Remove "+s.name+" from Room "+s.room+"?")){students=students.filter(x=>x.key!==s.key);if(me===s.key)logout();cloudDelete([s]);renderAdmin()}};
-    const bx=document.createElement("div");bx.style.cssText="display:flex;gap:6px;flex-wrap:wrap";
-    if(st!=="ALL_OFF"){
-      const m=document.createElement("button");m.textContent="Mark OFF";
-      m.title="Use this after you checked the room yourself";
-      m.onclick=()=>adminMarkOff(s.key);bx.appendChild(m);
-    }
-    bx.appendChild(b);d.append(l,bx);list.appendChild(d);
+  if(!rows.length){const p=document.createElement("p");p.className="msg";p.textContent=groups.length?"No matching rooms.":"No registered students yet. Press ‘Add demo rooms’ to see an example.";list.appendChild(p)}
+  rows.forEach(g=>{
+    const card=document.createElement("section");card.className="room-card";
+    const head=document.createElement("div");head.className="room-head";
+    const left=document.createElement("div");
+    const title=document.createElement("strong");title.textContent="Room "+g.room;
+    const meta=document.createElement("div");meta.className="room-meta";meta.textContent=g.members.length+" member"+(g.members.length===1?"":"s");
+    left.append(title,meta);
+    const badge=document.createElement("span");badge.className= g.status==="ALL_OFF"?"ok":g.status==="WAITING"?"warn":"bad";
+    badge.textContent=g.status==="ALL_OFF"?"✅ All OFF":g.status==="WAITING"?"⏳ Waiting":"⚠️ Needs action";
+    head.append(left,badge);card.appendChild(head);
+    const statusOrder={STILL_ON:0,LATE:1,WAITING:2,ALL_OFF:3};
+    const ordered=g.members.slice().sort((a,b)=>(statusOrder[statusOf(a)]-statusOrder[statusOf(b)])||a.name.localeCompare(b.name));
+    ordered.forEach(s=>{
+      const st=statusOf(s),fr=s.date===today();
+      const row=document.createElement("div");row.className="member-row";
+      const info=document.createElement("div");info.className="member-info";
+      const nm=document.createElement("div");nm.className="member-name";nm.textContent=s.name+(s.demo?" (demo)":"");
+      const status=document.createElement("span");status.className=cls(st);status.textContent=LABEL[st];
+      const details=document.createElement("small");details.textContent="Light: "+((fr&&s.light)||"not told")+" · Fan: "+((fr&&s.fan)||"not told")+" · Leaves: "+(s.leaveTime||"not set")+(s.byAdmin?" · checked by admin":"");
+      info.append(nm,status,details);
+      const actions=document.createElement("div");actions.className="member-actions";
+      if(st!=="ALL_OFF"){
+        const mark=document.createElement("button");mark.textContent="Mark OFF";mark.title="Use only after checking this member's appliances";mark.onclick=()=>adminMarkOff(s.key);actions.appendChild(mark);
+      }
+      const remove=document.createElement("button");remove.className="sec";remove.textContent="Remove";
+      remove.onclick=()=>{if(confirm("Remove "+s.name+" from Room "+g.room+"?")){students=students.filter(x=>x.key!==s.key);if(me===s.key)logout();cloudDelete([s]);renderAdmin()}};
+      actions.appendChild(remove);row.append(info,actions);card.appendChild(row);
+    });
+    list.appendChild(card);
   });
 }
-
 /* the warden checked the room and found everything OFF */
 function adminMarkOff(key){
   const s=find(key);if(!s)return;
