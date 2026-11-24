@@ -1,0 +1,11 @@
+{
+  "appId": "com.hostelpower.app",
+  "appName": "Hostel Power",
+  "webDir": "dist",
+  "backgroundColor": "#0b1222",
+  "plugins": {
+    "LocalNotifications": {
+      "presentationOptions": ["badge", "sound", "banner", "list"]
+    }
+  }
+}
