@@ -1,5 +1,5 @@
 SMART HOSTEL ELECTRICITY - SHARED ONLINE VERSION
-All phones save rooms to one online database (Firebase). The warden sees every student's room.
+All phones save rooms to one online database (Firebase). The warden sees every student's room. Up to 10 students can register under the same room number, each with a separate name and leaving time.
 
 FILES (keep all together): index.html, firebase-config.js, manifest.webmanifest, sw.js, icon-192.png, icon-512.png, README.txt
 

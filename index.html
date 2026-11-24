@@ -64,7 +64,7 @@ details ul{margin:8px 0 0;padding-left:20px}
 <details>
 <summary>How does this work? (read this first)</summary>
 <ul>
-<li><b>Step 1:</b> Register with your name and room number.</li>
+<li><b>Step 1:</b> Each student registers with their own name and shared room number. Up to 10 students can register in one room.</li>
 <li><b>Step 2:</b> Set the time you leave your room every day.</li>
 <li><b>Step 3:</b> You get an alarm 5 minutes before that time and again at that time. It repeats every 2 minutes (up to 5 times) until you confirm.</li>
 <li><b>Step 4:</b> Switch OFF the light and fan, choose OFF for both, and press <b>I'm leaving the room</b>.</li>
@@ -88,9 +88,12 @@ details ul{margin:8px 0 0;padding-left:20px}
 <input id="name" placeholder="e.g. Arun" maxlength="40" autocomplete="name">
 <label for="room">Room number</label>
 <input id="room" placeholder="e.g. B-204" maxlength="12">
+<p class="note">A room can have up to 10 students. Each roommate registers with their own name and the same room number.</p>
 <button onclick="register()">Register</button>
 <p class="msg" id="regMsg" aria-live="polite"></p>
 <h2 style="margin-top:14px">Already registered?</h2>
+<label for="loginName">Your name</label>
+<input id="loginName" placeholder="Enter your registered name" maxlength="40" autocomplete="name">
 <label for="loginRoom">Your room number</label>
 <input id="loginRoom" placeholder="e.g. B-204">
 <button class="sec" onclick="login()">Continue</button>
@@ -162,7 +165,7 @@ details ul{margin:8px 0 0;padding-left:20px}
 <div class="stat"><b id="sWait">0</b>Waiting</div>
 <div class="stat"><b id="sAct">0</b>Needs action</div>
 </div>
-<p class="note">Needs action = Still ON + Not confirmed.</p>
+<p class="note">Needs action = Still ON + Not confirmed. Each row represents one student; roommates appear under the same room number.</p>
 <div class="row" style="margin-top:10px">
 <input id="q" placeholder="Search name or room" aria-label="Search name or room" oninput="renderAdmin()">
 <select id="flt" aria-label="Filter by status" onchange="renderAdmin()">
@@ -179,7 +182,7 @@ details ul{margin:8px 0 0;padding-left:20px}
 <button class="sec" onclick="logoutAdmin()">Log out</button>
 <button class="dng" onclick="clearAll()">Clear all data</button>
 </div>
-<p class="note">Rooms are saved in a shared online database, so every phone sees the same rooms.</p>
+<p class="note">Students sharing a room have separate records and leaving times. Up to 10 students can register under one room number.</p>
 </div>
 </div>
 </div>
@@ -210,17 +213,59 @@ const minsOf=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
 const nowMin=()=>{const d=clock();return d.getHours()*60+d.getMinutes()};
 const hhmm=m=>pad(Math.floor(m/60))+":"+pad(m%60);
 const norm=r=>r.trim().toUpperCase().replace(/[\s-]+/g,"");   // B204, B 204 and B-204 are the same room
+const normName=n=>n.trim().toUpperCase().replace(/\s+/g," ");
+const studentKey=(name,room)=>norm(room)+"::"+normName(name); // each student has a separate identity within the shared room
+const MAX_ROOM_MEMBERS=10; // supports rooms with up to 10 students
+const roomKeyOf=k=>String(k).includes("::")?String(k).split("::",1)[0]:norm(String(k));
 /* ---------- shared online database (Firebase Firestore) ---------- */
 let db=null,cloudReady=false,meLoaded=false,unsubMe=null,unsubAdmin=null,adminListening=false;
 const CLOUD=()=>window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.projectId&&!/PASTE/.test(window.FIREBASE_CONFIG.projectId);
 const docId=k=>"r_"+encodeURIComponent(k);
 const clean=s=>JSON.parse(JSON.stringify(s));
+/* A room is one Firestore document containing up to 10 independent student records.
+   Always rebuild each key from the student name + room number, so older room-only keys
+   cannot accidentally make every roommate look like the same registered person.
+   This also reads the old format (one flat student document). */
+function membersFromRoom(data,roomKey){
+  if(!data)return [];
+  const room=data.room||(Array.isArray(data.members)&&data.members[0]&&data.members[0].room)||roomKey;
+  const rk=data.roomKey||norm(room||roomKey);
+  if(Array.isArray(data.members))return data.members.map(m=>({...m,room:m.room||room,roomKey:rk,key:studentKey(m.name||"",m.room||room)}));
+  if(data.name&&room)return [{...data,room,roomKey:rk,key:studentKey(data.name,room)}];
+  return [];
+}
+function roomPayload(members,roomKey){
+  const room=(members[0]&&members[0].room)||roomKey;
+  return {room,roomKey,members:members.map(m=>clean({...m,roomKey,key:studentKey(m.name||"",m.room||room)}))};
+}
 function cloudFail(e){const w=$("storeWarn");w.textContent="Cannot reach the shared database ("+((e&&e.code)||"error")+"). Check the internet and the Firebase setup.";w.classList.remove("hide")}
+async function saveOne(s){
+  if(!db)return;
+  const rk=s.roomKey||norm(s.room),ref=db.collection("rooms").doc(docId(rk));
+  await db.runTransaction(async tx=>{
+    const snap=await tx.get(ref),members=snap.exists?membersFromRoom(snap.data(),rk):[];
+    const i=members.findIndex(m=>m.key===s.key);
+    if(i>=0)members[i]=clean({...s,roomKey:rk});else members.push(clean({...s,roomKey:rk}));
+    tx.set(ref,roomPayload(members,rk));
+  });
+}
 function save(x){
   if(!db)return;
-  [].concat(x===undefined?students:x).forEach(s=>db.collection("rooms").doc(docId(s.key)).set(clean(s)).catch(cloudFail));
+  [].concat(x===undefined?students:x).forEach(s=>saveOne(s).catch(cloudFail));
 }
-function cloudDelete(list){if(db)list.forEach(s=>db.collection("rooms").doc(docId(s.key)).delete().catch(cloudFail))}
+function cloudDelete(list){
+  if(!db||!list.length)return;
+  const grouped=new Map();
+  list.forEach(s=>{const rk=s.roomKey||norm(s.room);if(!grouped.has(rk))grouped.set(rk,[]);grouped.get(rk).push(s.key)});
+  grouped.forEach((keys,rk)=>{
+    const ref=db.collection("rooms").doc(docId(rk));
+    db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists)return;
+      const members=membersFromRoom(snap.data(),rk).filter(m=>!keys.includes(m.key));
+      if(!members.length)tx.delete(ref);else tx.set(ref,roomPayload(members,rk));
+    }).catch(cloudFail);
+  });
+}
 function startCloud(){
   const w=$("storeWarn");
   if(!CLOUD()){w.textContent="Setup not finished: open firebase-config.js and paste your Firebase details (see README).";w.classList.remove("hide");return}
@@ -231,14 +276,18 @@ function startCloud(){
     cloudReady=true;listenMe();
   }catch(e){cloudFail(e)}
 }
-/* A student phone listens to ONE room only (its own). This keeps database reads tiny, even with hundreds of students. */
+/* Each student phone listens to the shared document for that room, but edits only its own student record. */
 function listenMe(){
   if(unsubMe){unsubMe();unsubMe=null}
   if(!db||!me||adminListening)return;
   let first=true;
-  unsubMe=db.collection("rooms").doc(docId(me)).onSnapshot(snap=>{
-    students=snap.exists?[snap.data()]:[];meLoaded=true;
-    rollover();renderStudent(first);first=false;
+  const rk=roomKeyOf(me);
+  unsubMe=db.collection("rooms").doc(docId(rk)).onSnapshot(snap=>{
+    students=snap.exists?membersFromRoom(snap.data(),rk):[];
+    // Upgrade an older saved session (which stored only the room number) when that room has one student.
+    if(me===rk&&students.length===1){me=students[0].key;store.set("hostelMe",me)}
+    else if(me===rk&&students.length>1){me="";store.del("hostelMe");say("loginMsg","This room has multiple students now. Please sign in with your name and room number.","warn")}
+    meLoaded=true;rollover();renderStudent(first);first=false;
   },cloudFail);
 }
 /* Only the admin phone (after the PIN) listens to all rooms. */
@@ -249,7 +298,7 @@ function adminListen(on){
   if(on){
     if(unsubMe){unsubMe();unsubMe=null}
     unsubAdmin=db.collection("rooms").onSnapshot(snap=>{
-      students=snap.docs.map(d=>d.data());meLoaded=true;
+      students=snap.docs.flatMap(d=>membersFromRoom(d.data(),d.data().roomKey||norm(d.data().room||decodeURIComponent(d.id.slice(2)))));meLoaded=true;
       renderStudent(false);if(adminOn)renderAdmin();
     },cloudFail);
   }else{meLoaded=false;students=[];listenMe();renderStudent(true)}
@@ -265,14 +314,15 @@ const LABEL={ALL_OFF:"All OFF",WAITING:"Waiting",STILL_ON:"Still ON",LATE:"Not c
 const cls=st=>st==="ALL_OFF"?"ok":st==="WAITING"?"warn":"bad";
 
 function newStudent(name,room){
-  return {name,room:room.trim(),key:norm(room),leaveTime:"",light:null,fan:null,confirmed:false,warned5:false,warnedLeave:false,nags:0,lastNag:0,date:today()};
+  return {name:name.trim(),room:room.trim(),roomKey:norm(room),key:studentKey(name,room),leaveTime:"",light:null,fan:null,confirmed:false,warned5:false,warnedLeave:false,nags:0,lastNag:0,date:today()};
 }
 
 /* A new day starts a clean sheet for every room */
 function rollover(){
   if(adminListening)return;   // the admin phone only reads; each student phone resets its own room
   const ch=[];
-  students.forEach(s=>{
+  // A student's phone resets only that student's record, never their roommates' records.
+  students.filter(s=>s.key===me).forEach(s=>{
     if(s.date!==today()){
       s.date=today();s.light=null;s.fan=null;s.confirmed=false;s.byAdmin=false;
       s.warned5=false;s.warnedLeave=false;s.nags=0;s.lastNag=0;ch.push(s);
@@ -446,26 +496,41 @@ function showTab(t){
 function say(id,text,c){const el=$(id);el.textContent=text;el.className="msg "+(c||"")}
 
 async function register(){
-  const name=$("name").value.trim(),raw=$("room").value,key=norm(raw);
-  if(!name||!key){say("regMsg","Please enter both your name and your room number.","bad");return}
+  const name=$("name").value.trim(),raw=$("room").value.trim(),rk=norm(raw);
+  if(!name||!rk){say("regMsg","Please enter both your name and your room number.","bad");return}
   if(!cloudReady){say("regMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
-  let exists=false;
-  try{exists=(await db.collection("rooms").doc(docId(key)).get()).exists}catch(e){cloudFail(e);return}
-  if(exists){say("regMsg","This room is already registered. Use “Already registered?” below.","bad");return}
-  const s=newStudent(name,raw);
-  save(s);login(key,s);
-}
-async function login(k,fresh){
-  const key=typeof k==="string"?k:norm($("loginRoom").value);
-  if(!cloudReady){say("loginMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
-  let s=fresh||null;
-  if(!s){
-    try{const sn=await db.collection("rooms").doc(docId(key)).get();if(sn.exists)s=sn.data()}
-    catch(e){cloudFail(e);return}
+  const s=newStudent(name,raw),ref=db.collection("rooms").doc(docId(rk));
+  try{
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref),members=snap.exists?membersFromRoom(snap.data(),rk):[];
+      // Room number is shared: only block a duplicate student name in that room.
+      // Different roommates using the same room number must be allowed to register.
+      if(members.some(m=>normName(m.name||"")===normName(name)))throw new Error("DUPLICATE_STUDENT");
+      if(members.length>=MAX_ROOM_MEMBERS)throw new Error("ROOM_FULL");
+      members.push(s);
+      tx.set(ref,roomPayload(members,rk));
+    });
+  }catch(e){
+    if(e.message==="DUPLICATE_STUDENT"){say("regMsg","This student name is already registered in this room. Use “Already registered?” to sign in. Other roommates can register with their own names.","bad");return}
+    if(e.message==="ROOM_FULL"){say("regMsg","This room already has 10 registered students. Please check the room number.","bad");return}
+    cloudFail(e);return;
   }
-  if(!s){say("loginMsg","Room not found. Please register first.","bad");return}
+  say("regMsg","Registration successful! You can now set your leaving time.","ok");
+  await login(s.key);
+}
+async function login(k){
+  const rawRoom=typeof k==="string"?roomKeyOf(k):$("loginRoom").value.trim();
+  const name=typeof k==="string"?k.slice(k.indexOf("::")+2):$("loginName").value.trim();
+  const rk=norm(rawRoom),key=studentKey(name,rawRoom);
+  if(!name||!rk){say("loginMsg","Enter your registered name and room number.","bad");return}
+  if(!cloudReady){say("loginMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
+  let members=[];
+  try{const sn=await db.collection("rooms").doc(docId(rk)).get();if(sn.exists)members=membersFromRoom(sn.data(),rk)}
+  catch(e){cloudFail(e);return}
+  const s=members.find(m=>m.key===key);
+  if(!s){say("loginMsg","Student not found in this room. Check your name and room number or register first.","bad");return}
   me=key;store.set("hostelMe",me);
-  if(!adminListening){students=[s];meLoaded=true}
+  if(!adminListening){students=members;meLoaded=true}
   listenMe();
   unlockAudio();keepAwake();
   renderStudent(true);
@@ -592,7 +657,7 @@ function renderAdmin(){
   rollover();
   const all=students.map(s=>({s,st:statusOf(s)}));
   const c=x=>all.filter(a=>a.st===x).length;
-  $("sTotal").textContent=all.length;
+  $("sTotal").textContent=new Set(all.map(a=>a.s.roomKey||norm(a.s.room))).size;
   $("sOk").textContent=c("ALL_OFF");
   $("sWait").textContent=c("WAITING");
   $("sAct").textContent=c("STILL_ON")+c("LATE");
@@ -601,7 +666,7 @@ function renderAdmin(){
   const rows=all.filter(a=>(!f||a.st===f)&&(!q||a.s.name.toLowerCase().includes(q)||a.s.room.toLowerCase().includes(q)))
     .sort((a,b)=>order[a.st]-order[b.st]||a.s.room.localeCompare(b.s.room,undefined,{numeric:true}));
   const list=$("list");list.textContent="";
-  if(!rows.length){const p=document.createElement("p");p.className="msg";p.textContent=all.length?"No matching rooms.":"No registered rooms yet. Press “Add demo rooms” to see an example.";list.appendChild(p)}
+  if(!rows.length){const p=document.createElement("p");p.className="msg";p.textContent=all.length?"No matching students.":"No registered students yet. Press “Add demo rooms” to see an example.";list.appendChild(p)}
   rows.forEach(({s,st})=>{
     const fr=s.date===today();
     const d=document.createElement("div");d.className="room";
@@ -612,7 +677,7 @@ function renderAdmin(){
     sm.textContent="Light: "+((fr&&s.light)||"not told")+" · Fan: "+((fr&&s.fan)||"not told")+" · Leaves: "+(s.leaveTime||"not set")+(s.byAdmin?" · checked by admin":"");
     l.append(t,document.createElement("br"),sp,document.createElement("br"),sm);
     const b=document.createElement("button");b.className="sec";b.textContent="Remove";
-    b.onclick=()=>{if(confirm("Remove room "+s.room+"?")){students=students.filter(x=>x!==s);if(me===s.key)logout();cloudDelete([s]);renderAdmin()}};
+    b.onclick=()=>{if(confirm("Remove "+s.name+" from Room "+s.room+"?")){students=students.filter(x=>x.key!==s.key);if(me===s.key)logout();cloudDelete([s]);renderAdmin()}};
     const bx=document.createElement("div");bx.style.cssText="display:flex;gap:6px;flex-wrap:wrap";
     if(st!=="ALL_OFF"){
       const m=document.createElement("button");m.textContent="Mark OFF";

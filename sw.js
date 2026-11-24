@@ -1,5 +1,5 @@
 // Service worker: makes the app work offline and handles taps on notifications
-const CACHE = "hostel-power-shared-v3";
+const CACHE = "hostel-power-shared-v5-room-10";
 const FILES = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./firebase-config.js"];
 
 self.addEventListener("install", e => {
