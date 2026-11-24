@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Smart Hostel Electricity Management</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1769aa">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Hostel Power">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#eef2f7;--card:#fff;--tx:#1a2433;--mut:#5d6b7e;--bd:#c9d2de;--pri:#1769aa;--priH:#104c80;--ok:#1b7f3b;--warn:#a86d00;--bad:#c62828;--chip:#e8f1ff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10161f;--card:#1a2330;--tx:#e6ebf2;--mut:#9aa8bb;--bd:#33415a;--pri:#4a9be0;--priH:#6bb0ee;--ok:#5fd17f;--warn:#f0b43c;--bad:#ff7b7b;--chip:#243349}}
+:root[data-theme="dark"]{--bg:#10161f;--card:#1a2330;--tx:#e6ebf2;--mut:#9aa8bb;--bd:#33415a;--pri:#4a9be0;--priH:#6bb0ee;--ok:#5fd17f;--warn:#f0b43c;--bad:#ff7b7b;--chip:#243349}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{font-family:system-ui,Arial,sans-serif;background:var(--bg);color:var(--tx);margin:0;padding:16px;line-height:1.45}
+.wrap{max-width:760px;margin:auto}
+h1{text-align:center;font-size:1.5rem;margin:8px 0 2px}
+.sub{text-align:center;color:var(--mut);margin:0 0 14px}
+.card{background:var(--card);padding:18px;margin:12px 0;border-radius:12px;border:1px solid var(--bd)}
+h2{margin:0 0 10px;font-size:1.15rem}
+.step{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--pri);color:#fff;font-size:.9rem;margin-right:8px}
+input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:8px;font-size:1rem;font-family:inherit}
+input,select{border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+button{background:var(--pri);color:#fff;border:none;cursor:pointer;min-height:44px}
+button:hover{background:var(--priH)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #f0b429;outline-offset:2px}
+button.sec{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+button.dng{background:var(--bad)}
+.tabs{display:flex;gap:8px}.tabs button{margin:0}
+.tabs button.off{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+.row{display:flex;gap:10px;flex-wrap:wrap}.row>*{flex:1;min-width:130px}
+label,.lab{font-size:.95rem;color:var(--mut)}
+.ok{color:var(--ok);font-weight:700}.warn{color:var(--warn);font-weight:700}.bad{color:var(--bad);font-weight:700}
+.stats{display:flex;gap:10px;flex-wrap:wrap}
+.stat{background:var(--chip);padding:12px;border-radius:8px;flex:1;min-width:90px;text-align:center}
+.stat b{font-size:1.5rem;display:block}
+.room{border-top:1px solid var(--bd);padding:10px 0;display:flex;justify-content:space-between;gap:10px;align-items:center}
+.room small{color:var(--mut)}.room button{width:auto;padding:6px 12px;margin:0;min-height:36px}
+.banner{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bad);color:#fff;padding:12px;border-radius:10px;margin:8px 0;display:none;font-weight:600}
+.banner button{background:#fff;color:var(--bad);width:auto;padding:6px 12px;margin:6px 0 0}
+.hide{display:none}
+.msg{min-height:1.2em;margin:4px 0}
+.status{border-radius:12px;padding:14px;font-size:1.05rem;border:2px solid var(--bd);background:var(--card)}
+.status.s-ALL_OFF{border-color:var(--ok)}.status.s-WAITING{border-color:var(--warn)}.status.s-STILL_ON,.status.s-LATE{border-color:var(--bad)}
+.seg{display:flex;gap:8px}.seg button{margin:6px 0;background:transparent;color:var(--tx);border:2px solid var(--bd)}
+.seg button[aria-pressed="true"]{background:var(--pri);border-color:var(--pri);color:#fff}
+details{margin:10px 0;color:var(--mut)}summary{cursor:pointer;color:var(--pri);font-weight:600}
+details ul{margin:8px 0 0;padding-left:20px}
+.note{font-size:.85rem;color:var(--mut)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Smart Hostel Electricity Management</h1>
+<p class="sub">Switch OFF the light and fan before you leave. Save electricity.</p>
+
+<div class="banner" id="banner" role="alert"><span id="bannerTxt"></span><br><button id="bannerOff" onclick="quickOff()" style="display:none;margin-right:8px">✅ Already OFF</button><button onclick="dismissBanner()">OK, dismiss</button></div>
+<p class="msg bad hide" id="storeWarn">Saving is blocked in this view, so data will be lost when you refresh. Open the page link directly in Chrome or Safari, not inside another app or a private tab.</p>
+
+<details>
+<summary>How does this work? (read this first)</summary>
+<ul>
+<li><b>Step 1:</b> Register with your name and room number.</li>
+<li><b>Step 2:</b> Set the time you leave your room every day.</li>
+<li><b>Step 3:</b> You get an alarm 5 minutes before that time and again at that time. It repeats every 2 minutes (up to 5 times) until you confirm.</li>
+<li><b>Step 4:</b> Switch OFF the light and fan, choose OFF for both, and press <b>I'm leaving the room</b>.</li>
+<li>The admin (warden) sees each room as: <b>All OFF</b> (done), <b>Waiting</b> (not time yet), <b>Still ON</b> (you said something is ON) or <b>Not confirmed</b> (time is over and nothing was marked).</li>
+<li><b>Already switched OFF but forgot to mark it?</b> Press the green button <b>“I already switched both OFF”</b>. It is on your status box and on the alarm message.</li>
+<li>The app cannot sense the real switches. It trusts what you mark, so the warden can also check a room and press <b>Mark OFF</b>.</li>
+<li>Alarms from the app ring while it is open. For alerts when your phone is locked, use the <b>calendar alarm</b> in Step 3. All data stays on this device.</li>
+</ul>
+</details>
+
+<div class="tabs hide" id="tabs" role="tablist">
+<button id="tabS" role="tab" onclick="showTab('student')">Student</button>
+<button id="tabA" role="tab" class="off" onclick="showTab('admin')">Admin</button>
+</div>
+
+<!-- STUDENT -->
+<div id="studentView">
+<div class="card" id="regCard">
+<h2>Register</h2>
+<label for="name">Your name</label>
+<input id="name" placeholder="e.g. Arun" maxlength="40" autocomplete="name">
+<label for="room">Room number</label>
+<input id="room" placeholder="e.g. B-204" maxlength="12">
+<button onclick="register()">Register</button>
+<p class="msg" id="regMsg" aria-live="polite"></p>
+<h2 style="margin-top:14px">Already registered?</h2>
+<label for="loginRoom">Your room number</label>
+<input id="loginRoom" placeholder="e.g. B-204">
+<button class="sec" onclick="login()">Continue</button>
+<p class="msg" id="loginMsg" aria-live="polite"></p>
+</div>
+
+<div id="myArea" class="hide">
+<div class="card">
+<div class="row" style="align-items:center">
+<h2 id="hello" style="margin:0"></h2>
+<button class="sec" onclick="logout()" style="max-width:140px">Switch room</button>
+</div>
+<div class="status" id="statusBox" style="margin-top:10px" aria-live="polite"></div>
+<button id="quickBtn" class="hide" onclick="quickOff()" style="background:var(--ok)">✅ I already switched both OFF. Mark it now</button>
+</div>
+
+<div class="card">
+<h2><span class="step">1</span>Set your leaving time</h2>
+<label for="leaveTime">The time you leave the room every day</label>
+<input type="time" id="leaveTime">
+<div class="row"><button onclick="setTime()">Save time</button><button class="sec" onclick="clearTime()">Remove time</button></div>
+<button class="sec" onclick="testAlarm()">Test the alarm sound</button>
+<p class="msg" id="timeMsg" aria-live="polite"></p>
+<p class="note">Keep this page open with the screen on and the volume up.</p>
+</div>
+
+<div class="card">
+<h2><span class="step">2</span>Before you leave</h2>
+<p class="lab" style="margin:0">Look at your room. Is the light ON or OFF?</p>
+<div class="seg" id="segLight"></div>
+<p class="lab" style="margin:8px 0 0">Is the fan ON or OFF?</p>
+<div class="seg" id="segFan"></div>
+<button onclick="confirmLeave()">I'm leaving the room</button>
+<p class="msg" id="statusMsg" aria-live="polite"></p>
+</div>
+
+<div class="card">
+<h2><span class="step">3</span>Get alerts on your phone</h2>
+<p id="notifStatus" class="lab" aria-live="polite"></p>
+<button id="notifBtn" onclick="enableNotifications()">Turn on notifications</button>
+<button id="installBtn" class="sec hide" onclick="installApp()">Install as an app</button>
+<button class="sec" onclick="downloadIcs()">Add alarm to my phone calendar</button>
+<p class="msg" id="icsMsg" aria-live="polite"></p>
+<details><summary>Why two kinds of alerts?</summary>
+<ul>
+<li><b>Notifications</b> come from this app. They work best while the app is open or was used recently.</li>
+<li><b>Calendar alarm</b> is rung by your phone itself every day, even when the app is closed and the phone is locked. Use both.</li>
+<li><b>iPhone:</b> tap Share, then <b>Add to Home Screen</b>. Open the app from the home screen, then turn on notifications.</li>
+</ul>
+</details>
+</div>
+</div>
+</div>
+
+<!-- ADMIN -->
+<div id="adminView" class="hide">
+<div class="card" id="pinCard">
+<h2 id="pinTitle">Admin login</h2>
+<label for="pin">PIN (numbers only)</label>
+<input type="password" id="pin" inputmode="numeric" placeholder="PIN" maxlength="12">
+<button onclick="adminLogin()">Enter</button>
+<p class="msg" id="pinMsg" aria-live="polite"></p>
+</div>
+<div class="card hide" id="dash">
+<h2>Hostel dashboard</h2>
+<div class="stats">
+<div class="stat"><b id="sTotal">0</b>Rooms</div>
+<div class="stat"><b id="sOk">0</b>All OFF</div>
+<div class="stat"><b id="sWait">0</b>Waiting</div>
+<div class="stat"><b id="sAct">0</b>Needs action</div>
+</div>
+<p class="note">Needs action = Still ON + Not confirmed.</p>
+<div class="row" style="margin-top:10px">
+<input id="q" placeholder="Search name or room" aria-label="Search name or room" oninput="renderAdmin()">
+<select id="flt" aria-label="Filter by status" onchange="renderAdmin()">
+<option value="">All statuses</option><option value="ALL_OFF">All OFF</option><option value="WAITING">Waiting</option><option value="STILL_ON">Still ON</option><option value="LATE">Not confirmed</option>
+</select>
+</div>
+<div id="list"></div>
+<div class="row">
+<button class="sec" onclick="addDemo()">Add demo rooms</button>
+<button class="sec" onclick="removeDemo()">Remove demo rooms</button>
+</div>
+<div class="row">
+<button class="sec" onclick="exportCsv()">Export today's CSV</button>
+<button class="sec" onclick="logoutAdmin()">Log out</button>
+<button class="dng" onclick="clearAll()">Clear all data</button>
+</div>
+<p class="note">Data is stored in this browser only. To use it across many phones, a shared server is needed (future scope).</p>
+</div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const TITLE="Smart Hostel Electricity Management";
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}},
+  del(k){try{localStorage.removeItem(k)}catch(e){}}
+};
+let storageOK=true;
+try{localStorage.setItem("hx","1");storageOK=localStorage.getItem("hx")==="1";localStorage.removeItem("hx")}catch(e){storageOK=false}
+
+let students=store.get("hostelStudents",[]);
+let me=store.get("hostelMe","");
+let adminOn=false;
+
+/* ---------- small helpers ---------- */
+let clock=()=>new Date();                       // one place for "now" (easy to test)
+const pad=n=>String(n).padStart(2,"0");
+const today=()=>{const d=clock();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())};
+const minsOf=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
+const nowMin=()=>{const d=clock();return d.getHours()*60+d.getMinutes()};
+const hhmm=m=>pad(Math.floor(m/60))+":"+pad(m%60);
+const norm=r=>r.trim().toUpperCase().replace(/\s+/g,"");
+const save=()=>store.set("hostelStudents",students);
+const find=k=>students.find(s=>s.key===k);
+
+const GRACE=5;          // minutes after leaving time before a room counts as Late
+const NAG_EVERY=2;      // minutes between repeat reminders
+const NAG_MAX=5;        // how many repeat reminders
+const WINDOW=120;       // alarms are still allowed up to 2 hours after the time (if the page was asleep)
+const LABEL={ALL_OFF:"All OFF",WAITING:"Waiting",STILL_ON:"Still ON",LATE:"Not confirmed"};
+const cls=st=>st==="ALL_OFF"?"ok":st==="WAITING"?"warn":"bad";
+
+function newStudent(name,room){
+  return {name,room:room.trim(),key:norm(room),leaveTime:"",light:null,fan:null,confirmed:false,warned5:false,warnedLeave:false,nags:0,lastNag:0,date:today()};
+}
+
+/* A new day starts a clean sheet for every room */
+function rollover(){
+  let changed=false;
+  students.forEach(s=>{
+    if(s.date!==today()){
+      s.date=today();s.light=null;s.fan=null;s.confirmed=false;s.byAdmin=false;
+      s.warned5=false;s.warnedLeave=false;s.nags=0;s.lastNag=0;changed=true;
+    }
+  });
+  if(changed)save();
+}
+
+/* ---------- THE RULE: what is this room's status? ----------
+   1. Student confirmed and both are OFF      -> ALL_OFF
+   2. Student confirmed but something is ON   -> STILL_ON
+   3. Not confirmed and time + 5 min passed   -> LATE
+   4. Anything else                            -> WAITING                      */
+function statusOf(s){
+  if(s.confirmed)return(s.light==="OFF"&&s.fan==="OFF")?"ALL_OFF":"STILL_ON";
+  if(s.leaveTime&&nowMin()>minsOf(s.leaveTime)+GRACE)return "LATE";
+  return "WAITING";
+}
+const whatIsOn=s=>[s.light==="ON"?"light":"",s.fan==="ON"?"fan":""].filter(Boolean);
+
+/* ---------- THE RULE: when should the alarm ring? ----------
+   Never if the room is ALL_OFF.
+   - 5 minutes before the leaving time (once)
+   - at the leaving time (once)
+   - then every 2 minutes, up to 5 times, until the student confirms ALL OFF   */
+function nextReminder(s){
+  if(!s||!s.leaveTime||statusOf(s)==="ALL_OFF")return null;
+  const d=minsOf(s.leaveTime)-nowMin();
+  const now=clock().getTime();
+  if(d<=5&&d>0&&!s.warned5)return {kind:"warn5",text:"Leaving in "+d+" min. Get ready to switch OFF the light and fan."};
+  if(d<=0&&d>-WINDOW&&!s.warnedLeave)return {kind:"leave",text:"Time to leave! Switch OFF the light and fan, then press “I'm leaving the room”."};
+  if(s.warnedLeave&&d>-WINDOW&&s.nags<NAG_MAX&&now-s.lastNag>=NAG_EVERY*60000){
+    const on=whatIsOn(s);
+    return {kind:"nag",text:s.confirmed&&on.length?"Your "+on.join(" and ")+" is still ON. Switch it OFF and press the button again.":"You have not confirmed yet. Switch OFF the light and fan, then press the button."};
+  }
+  return null;
+}
+function applyReminder(s,r){
+  const now=clock().getTime();
+  if(r.kind==="warn5")s.warned5=true;
+  if(r.kind==="leave"){s.warned5=true;s.warnedLeave=true;s.lastNag=now}
+  if(r.kind==="nag"){s.nags++;s.lastNag=now}
+  save();
+}
+
+/* ---------- alarm sound + keep screen awake ---------- */
+let actx=null,wl=null,alarmT=null;
+function unlockAudio(){
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();if(actx.state==="suspended")actx.resume()}catch(e){}
+}
+function beep(){
+  try{
+    if(!actx)return;
+    stopAlarm();
+    let n=0;
+    const ring=()=>{
+      [0,.25,.5].forEach(t=>{
+        const o=actx.createOscillator(),g=actx.createGain();
+        o.type="square";o.frequency.value=880;
+        o.connect(g);g.connect(actx.destination);
+        g.gain.value=.2;
+        o.start(actx.currentTime+t);o.stop(actx.currentTime+t+.15);
+      });
+      if(++n>=8)stopAlarm();
+    };
+    ring();alarmT=setInterval(ring,1200);
+  }catch(e){}
+}
+function stopAlarm(){if(alarmT){clearInterval(alarmT);alarmT=null}}
+async function keepAwake(){
+  try{
+    if("wakeLock" in navigator&&!wl){
+      wl=await navigator.wakeLock.request("screen");
+      wl.addEventListener("release",()=>{wl=null});
+    }
+  }catch(e){}
+}
+function banner(msg,quick){
+  $("bannerTxt").textContent=msg;$("banner").style.display="block";
+  $("bannerOff").style.display=quick?"inline-block":"none";
+  document.title="⏰ "+msg;
+  beep();
+  notify("Hostel Electricity Reminder",msg);
+  try{if(navigator.vibrate)navigator.vibrate([300,150,300,150,300])}catch(e){}
+}
+function dismissBanner(){stopAlarm();$("banner").style.display="none";document.title=TITLE}
+function testAlarm(){unlockAudio();keepAwake();banner("Test alarm: this is how your reminder will sound.",false)}
+
+/* ---------- phone alerts: notifications, install, calendar alarm ---------- */
+function notify(title,body){
+  try{
+    if(!("Notification" in window)||Notification.permission!=="granted")return;
+    if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0){
+      navigator.serviceWorker.ready.then(r=>r.showNotification(title,{
+        body,icon:"icon-192.png",badge:"icon-192.png",tag:"hostel-reminder",renotify:true,
+        requireInteraction:true,vibrate:[300,150,300,150,300],
+        actions:[{action:"off",title:"✅ Already OFF"}]
+      })).catch(()=>{});
+    }else new Notification(title,{body,icon:"icon-192.png"});
+  }catch(e){}
+}
+function updateNotifUI(){
+  const st=$("notifStatus"),btn=$("notifBtn");
+  if(!st)return;
+  const standalone=(window.matchMedia&&matchMedia("(display-mode: standalone)").matches)||navigator.standalone;
+  if(!("Notification" in window)){
+    st.textContent="This browser cannot show notifications here. Use the calendar alarm below.";
+    btn.classList.add("hide");
+  }else if(Notification.permission==="granted"){
+    st.textContent="✅ Notifications are ON."+(standalone?"":" Tip: install the app for best results.");
+    btn.classList.add("hide");
+  }else if(Notification.permission==="denied"){
+    st.textContent="🚫 Notifications are blocked. Turn them on in your browser's site settings, or use the calendar alarm below.";
+    btn.classList.add("hide");
+  }else{
+    st.textContent="Notifications are OFF. Tap the button to turn them on.";
+    btn.classList.remove("hide");
+  }
+}
+function enableNotifications(){
+  if(!("Notification" in window)){updateNotifUI();return}
+  const done=()=>{updateNotifUI();if(Notification.permission==="granted")notify("Notifications are ON","You will get reminders for your leaving time.")};
+  try{const p=Notification.requestPermission(done);if(p&&p.then)p.then(done)}catch(e){updateNotifUI()}
+}
+let installEvt=null;
+window.addEventListener("beforeinstallprompt",e=>{e.preventDefault();installEvt=e;$("installBtn").classList.remove("hide")});
+window.addEventListener("appinstalled",()=>{installEvt=null;$("installBtn").classList.add("hide")});
+function installApp(){
+  if(!installEvt)return;
+  installEvt.prompt();
+  installEvt.userChoice.finally(()=>{installEvt=null;$("installBtn").classList.add("hide")});
+}
+
+/* A calendar file: the phone rings the alarm itself, even when the app is closed */
+const icsText=t=>String(t).replace(/\\/g,"\\\\").replace(/;/g,"\\;").replace(/,/g,"\\,").replace(/\n/g,"\\n");
+const fold=l=>{let out="";while(l.length>73){out+=l.slice(0,73)+"\r\n ";l=l.slice(73)}return out+l};
+function genIcs(s){
+  const d=clock(),ymd=d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());
+  const [h,m]=s.leaveTime.split(":");
+  const stamp=d.toISOString().replace(/[-:]/g,"").split(".")[0]+"Z";
+  const lines=["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Smart Hostel Electricity//EN","CALSCALE:GREGORIAN",
+    "BEGIN:VEVENT","UID:"+s.key+"-daily@hostel-electricity","DTSTAMP:"+stamp,
+    "DTSTART:"+ymd+"T"+h+m+"00","DURATION:PT5M","RRULE:FREQ=DAILY",
+    "SUMMARY:"+icsText("Switch OFF light and fan (Room "+s.room+")"),
+    "DESCRIPTION:"+icsText("Switch OFF the light and fan before you leave your room."),
+    "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:Leaving in 5 minutes. Get ready to switch OFF.","TRIGGER:-PT5M","END:VALARM",
+    "BEGIN:VALARM","ACTION:DISPLAY","DESCRIPTION:Time to leave! Switch OFF the light and fan.","TRIGGER:PT0S","END:VALARM",
+    "END:VEVENT","END:VCALENDAR"];
+  return lines.map(fold).join("\r\n")+"\r\n";
+}
+function downloadIcs(){
+  const s=find(me);if(!s)return;
+  if(!s.leaveTime){say("icsMsg","Set your leaving time in Step 1 first.","bad");return}
+  const blob=new Blob([genIcs(s)],{type:"text/calendar"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="hostel-alarm-"+s.key+".ics";
+  document.body.appendChild(a);a.click();a.remove();
+  say("icsMsg","Open the downloaded file and tap Add or Save. Your phone will then alert you every day at "+s.leaveTime+" and 5 minutes before.","ok");
+}
+
+/* ---------- tabs ---------- */
+function showTab(t){
+  const a=t==="admin";
+  $("studentView").classList.toggle("hide",a);
+  $("adminView").classList.toggle("hide",!a);
+  $("tabS").classList.toggle("off",a);
+  $("tabA").classList.toggle("off",!a);
+  if(a)initAdmin();
+}
+
+/* ---------- student ---------- */
+function say(id,text,c){const el=$(id);el.textContent=text;el.className="msg "+(c||"")}
+
+function register(){
+  const name=$("name").value.trim(),raw=$("room").value,key=norm(raw);
+  if(!name||!key){say("regMsg","Please enter both your name and your room number.","bad");return}
+  if(find(key)){say("regMsg","This room is already registered. Use “Already registered?” below.","bad");return}
+  students.push(newStudent(name,raw));
+  save();login(key);
+}
+function login(k){
+  const key=typeof k==="string"?k:norm($("loginRoom").value);
+  if(!find(key)){say("loginMsg","Room not found. Please register first.","bad");return}
+  me=key;store.set("hostelMe",me);
+  unlockAudio();keepAwake();
+  renderStudent(true);
+}
+function logout(){me="";store.del("hostelMe");dismissBanner();renderStudent(true)}
+
+function setTime(){
+  unlockAudio();keepAwake();
+  const s=find(me),t=$("leaveTime").value;
+  if(!s)return;
+  if(!t){say("timeMsg","Please pick a time first.","bad");return}
+  s.leaveTime=t;
+  const d=minsOf(t)-nowMin();
+  s.warned5=d<=5;          // already inside the 5-minute window, so skip that alarm today
+  s.warnedLeave=d<=0;      // time already passed today, so the first alarm is tomorrow
+  s.nags=d<=0?NAG_MAX:0;   // time already passed: no repeat reminders today either
+  s.lastNag=clock().getTime();
+  save();
+  if(d<=0)say("timeMsg","Saved. "+t+" has already passed today, so your first alarm is tomorrow.","ok");
+  else say("timeMsg","Saved. You will get an alarm at "+hhmm(Math.max(0,minsOf(t)-5))+" and at "+t+" every day.","ok");
+  renderStudent(false);
+}
+function clearTime(){
+  const s=find(me);if(!s)return;
+  s.leaveTime="";s.warned5=false;s.warnedLeave=false;s.nags=0;save();
+  $("leaveTime").value="";
+  say("timeMsg","Leaving time removed. No alarms will ring.","");
+  renderStudent(false);
+}
+
+/* choose ON or OFF for the light or the fan */
+function choose(item,val){
+  const s=find(me);if(!s)return;
+  s[item]=val;
+  if(s.confirmed){s.confirmed=false;say("statusMsg","You changed something, so please press “I'm leaving the room” again.","warn")}
+  else say("statusMsg","","");
+  save();renderStudent(false);
+}
+function confirmLeave(){
+  const s=find(me);if(!s)return;
+  if(!s.light||!s.fan){say("statusMsg","Please choose ON or OFF for both the light and the fan.","bad");return}
+  stopAlarm();
+  s.confirmed=true;save();
+  const on=whatIsOn(s);
+  if(!on.length){say("statusMsg","Thank you! Everything is OFF. The alarm is stopped.","ok");dismissBanner()}
+  else say("statusMsg","Saved, but your "+on.join(" and ")+" is still ON. The admin can see this. Switch it OFF, choose OFF above and press the button again.","warn");
+  renderStudent(false);
+}
+
+/* the student already switched OFF but had not marked it */
+function quickOff(){
+  const s=find(me);if(!s)return;
+  stopAlarm();
+  s.light="OFF";s.fan="OFF";s.confirmed=true;s.byAdmin=false;save();
+  say("statusMsg","Marked as OFF. Thank you! The alarm is stopped.","ok");
+  dismissBanner();renderStudent(false);
+}
+
+function renderSeg(id,item,s){
+  const box=$(id);
+  box.textContent="";
+  ["ON","OFF"].forEach(v=>{
+    const b=document.createElement("button");
+    b.textContent=(item==="light"?"Light ":"Fan ")+v;
+    b.setAttribute("aria-pressed",s[item]===v?"true":"false");
+    b.onclick=()=>choose(item,v);
+    box.appendChild(b);
+  });
+}
+function statusText(s,st){
+  const on=whatIsOn(s);
+  if(st==="ALL_OFF")return "✅ All OFF. Thank you for saving electricity!";
+  if(st==="STILL_ON")return "⚠️ Your "+on.join(" and ")+" is still ON. Switch it OFF, then press the button again.";
+  if(st==="LATE")return "🔴 Your leaving time is over and nothing is marked yet. If you already switched everything OFF, press the green button below. If not, switch OFF the light and fan first.";
+  return "⏳ Waiting. Before you leave, switch OFF the light and fan and press the button.";
+}
+function renderStudent(syncInputs){
+  const s=find(me);
+  if(me&&!s){me="";store.del("hostelMe")}
+  $("regCard").classList.toggle("hide",!!s);
+  $("myArea").classList.toggle("hide",!s);
+  if(!s)return;
+  $("hello").textContent=s.name+" · Room "+s.room;
+  updateNotifUI();
+  const st=statusOf(s);
+  const box=$("statusBox");
+  box.className="status s-"+st;
+  box.textContent=statusText(s,st);
+  $("quickBtn").classList.toggle("hide",st==="ALL_OFF");
+  renderSeg("segLight","light",s);
+  renderSeg("segFan","fan",s);
+  if(syncInputs)$("leaveTime").value=s.leaveTime||"";
+}
+
+/* ---------- the clock: runs every 5 seconds ---------- */
+function tick(){
+  rollover();
+  const s=find(me),r=nextReminder(s);
+  if(r){applyReminder(s,r);banner(r.text,true)}
+  renderStudent(false);
+  if(adminOn)renderAdmin();
+}
+
+/* ---------- admin ---------- */
+function initAdmin(){
+  const has=!!store.get("hostelPin","");
+  $("pinTitle").textContent=has?"Admin login":"Create an admin PIN (4 to 12 digits)";
+  $("pinCard").classList.toggle("hide",adminOn);
+  $("dash").classList.toggle("hide",!adminOn);
+  if(adminOn)renderAdmin();
+}
+function adminLogin(){
+  const p=$("pin").value.trim(),saved=store.get("hostelPin","");
+  if(!saved){
+    if(!/^\d{4,12}$/.test(p)){say("pinMsg","Use 4 to 12 digits.","bad");return}
+    store.set("hostelPin",p);adminOn=true;
+  }else if(p===saved)adminOn=true;
+  else{say("pinMsg","Wrong PIN.","bad");return}
+  $("pin").value="";say("pinMsg","","");initAdmin();
+}
+function logoutAdmin(){adminOn=false;initAdmin()}
+
+function renderAdmin(){
+  rollover();
+  const all=students.map(s=>({s,st:statusOf(s)}));
+  const c=x=>all.filter(a=>a.st===x).length;
+  $("sTotal").textContent=all.length;
+  $("sOk").textContent=c("ALL_OFF");
+  $("sWait").textContent=c("WAITING");
+  $("sAct").textContent=c("STILL_ON")+c("LATE");
+  const q=$("q").value.trim().toLowerCase(),f=$("flt").value;
+  const order={STILL_ON:0,LATE:1,WAITING:2,ALL_OFF:3};
+  const rows=all.filter(a=>(!f||a.st===f)&&(!q||a.s.name.toLowerCase().includes(q)||a.s.room.toLowerCase().includes(q)))
+    .sort((a,b)=>order[a.st]-order[b.st]||a.s.room.localeCompare(b.s.room,undefined,{numeric:true}));
+  const list=$("list");list.textContent="";
+  if(!rows.length){const p=document.createElement("p");p.className="msg";p.textContent=all.length?"No matching rooms.":"No registered rooms yet. Press “Add demo rooms” to see an example.";list.appendChild(p)}
+  rows.forEach(({s,st})=>{
+    const d=document.createElement("div");d.className="room";
+    const l=document.createElement("div");
+    const t=document.createElement("b");t.textContent="Room "+s.room+" · "+s.name+(s.demo?" (demo)":"");
+    const sp=document.createElement("span");sp.className=cls(st);sp.textContent=LABEL[st];
+    const sm=document.createElement("small");
+    sm.textContent="Light: "+(s.light||"not told")+" · Fan: "+(s.fan||"not told")+" · Leaves: "+(s.leaveTime||"not set")+(s.byAdmin?" · checked by admin":"");
+    l.append(t,document.createElement("br"),sp,document.createElement("br"),sm);
+    const b=document.createElement("button");b.className="sec";b.textContent="Remove";
+    b.onclick=()=>{if(confirm("Remove room "+s.room+"?")){students=students.filter(x=>x!==s);if(me===s.key)logout();save();renderAdmin()}};
+    const bx=document.createElement("div");bx.style.cssText="display:flex;gap:6px;flex-wrap:wrap";
+    if(st!=="ALL_OFF"){
+      const m=document.createElement("button");m.textContent="Mark OFF";
+      m.title="Use this after you checked the room yourself";
+      m.onclick=()=>adminMarkOff(s.key);bx.appendChild(m);
+    }
+    bx.appendChild(b);d.append(l,bx);list.appendChild(d);
+  });
+}
+
+/* the warden checked the room and found everything OFF */
+function adminMarkOff(key){
+  const s=find(key);if(!s)return;
+  s.light="OFF";s.fan="OFF";s.confirmed=true;s.byAdmin=true;save();
+  renderAdmin();renderStudent(false);
+}
+
+/* demo rooms so the dashboard is not empty during a presentation */
+function addDemo(){
+  if(students.some(s=>s.demo))return;
+  const n=nowMin(),late=hhmm(Math.max(0,n-30)),soon=hhmm(Math.min(1439,n+60));
+  const mk=(name,room,t,light,fan,confirmed)=>{const s=newStudent(name,room);s.demo=true;s.leaveTime=t;s.light=light;s.fan=fan;s.confirmed=confirmed;return s};
+  [mk("Arun","A-101","08:30","OFF","OFF",true),
+   mk("Bala","A-102","08:30","OFF","OFF",true),
+   mk("Charan","A-103","09:00","OFF","OFF",true),
+   mk("Dinesh","B-201","08:30","ON","OFF",true),
+   mk("Elan","B-202","08:30","ON","ON",true),
+   mk("Farook","B-203",late,null,null,false),
+   mk("Gokul","C-301",soon,null,null,false),
+   mk("Hari","C-302","",null,null,false)
+  ].forEach(s=>{if(!find(s.key))students.push(s)});
+  save();renderAdmin();
+}
+function removeDemo(){students=students.filter(s=>!s.demo);if(me&&!find(me)){me="";store.del("hostelMe")}save();renderAdmin();renderStudent(true)}
+
+function exportCsv(){
+  const q=v=>{let t=String(v);if(/^[=+\-@]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"'};  // stops spreadsheet formula tricks
+  const lines=[["Date","Room","Student","Light","Fan","Leaving time","Status","Checked by admin"].map(q).join(",")];
+  students.forEach(s=>lines.push([s.date,s.room,s.name,s.light||"",s.fan||"",s.leaveTime||"",LABEL[statusOf(s)],s.byAdmin?"Yes":""].map(q).join(",")));
+  const blob=new Blob([lines.join("\n")],{type:"text/csv"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="hostel-"+today()+".csv";
+  document.body.appendChild(a);a.click();a.remove();
+}
+function clearAll(){
+  if(!confirm("Delete ALL hostel records? This cannot be undone."))return;
+  students=[];me="";store.del("hostelStudents");store.del("hostelMe");renderAdmin();renderStudent(true);
+}
+
+/* ---------- start ---------- */
+if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0){
+  navigator.serviceWorker.register("sw.js").catch(()=>{});
+  navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.type==="quickoff")quickOff()});
+}
+if(!storageOK)$("storeWarn").classList.remove("hide");
+rollover();renderStudent(true);
+/* Admin is hidden from students. Open the page once with #admin on the end (on the warden's phone only) to unlock it. */
+function unlockAdmin(){
+  if(location.hash==="#admin")store.set("hostelAdminDevice",true);
+  if(store.get("hostelAdminDevice",false)){
+    $("tabs").classList.remove("hide");
+    if(location.hash==="#admin"){showTab("admin");try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}}
+  }
+}
+unlockAdmin();window.addEventListener("hashchange",unlockAdmin);
+["pointerdown","keydown","touchstart"].forEach(ev=>document.addEventListener(ev,()=>{unlockAudio();keepAwake()},{passive:true}));
+setInterval(tick,5000);
+if(location.hash==="#quickoff"){if(find(me))quickOff();try{history.replaceState(null,"",location.pathname+location.search)}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){keepAwake();tick()}});
+</script>
+</body>
+</html>
