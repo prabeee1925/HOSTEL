@@ -1,38 +1,52 @@
-SMART HOSTEL ELECTRICITY - SETUP GUIDE
+SMART HOSTEL ELECTRICITY - SHARED ONLINE VERSION
+All phones save rooms to one online database (Firebase). The warden sees every student's room.
 
-FILES (keep all six together): index.html, manifest.webmanifest, sw.js, icon-192.png, icon-512.png, README.txt
+FILES (keep all together): index.html, firebase-config.js, manifest.webmanifest, sw.js, icon-192.png, icon-512.png, README.txt
 
-A. PUT IT ONLINE (laptop, once) - GitHub Pages, free
- 1. Sign up at github.com.
- 2. + (top right) > New repository > name: hostel > Public > Create repository.
- 3. Click "uploading an existing file". Drag the SIX FILES (not the folder) in. Click Commit changes.
- 4. Settings > Pages > Branch: main, folder: / (root) > Save.
- 5. Wait 1-2 minutes. Your link: https://YOURUSERNAME.github.io/hostel/
- (Alternative: app.netlify.com/drop - drag the folder, get a link.)
+A. CREATE THE FREE ONLINE DATABASE (laptop, once, about 10 minutes)
+ 1. Go to console.firebase.google.com and sign in with a Google account.
+ 2. Add project > name it "hostel" > turn OFF Google Analytics > Create project.
+ 3. Left menu: Build > Firestore Database > Create database.
+    Location: asia-south1 (Mumbai). Start in PRODUCTION mode > Create.
+ 4. Open the Rules tab. Delete everything there and paste this, then click Publish:
 
-B. INSTALL ON THE PHONE
+      rules_version = '2';
+      service cloud.firestore {
+        match /databases/{database}/documents {
+          match /rooms/{room} {
+            allow read, write: if true;
+          }
+        }
+      }
+
+ 5. Click the gear icon > Project settings. Scroll to "Your apps" > click the web icon </> >
+    nickname "hostel" > Register app. (Do not tick Firebase Hosting.)
+ 6. You will see a block called firebaseConfig. Copy the six values (apiKey, authDomain,
+    projectId, storageBucket, messagingSenderId, appId).
+ 7. Open firebase-config.js in Notepad and replace each PASTE_... with your value. Keep the quotes. Save.
+
+B. PUT THE FILES ON GITHUB PAGES
+ In your repository: Add file > Upload files > drag ALL SEVEN files (replace the old ones) > Commit changes.
+ Wait 1-2 minutes. Your link: https://YOURUSERNAME.github.io/REPOSITORYNAME/
+ On each phone, if you see old behaviour, close the app fully and open it again.
+
+C. INSTALL ON PHONES
  Android: open the link in Chrome > menu (3 dots) > Install app.
- iPhone: open the link in Safari > Share > Add to Home Screen. Open it from the home screen.
- Open it in Chrome/Safari itself, not inside WhatsApp.
-
-C. STUDENT USE
- 1. Register (name + room number).
- 2. Set leaving time.
- 3. Step 3: Turn on notifications, then "Add alarm to my phone calendar" and save the file.
-    The calendar alarm is the reliable one when the phone is locked.
- 4. Before leaving: choose OFF for light and fan, press "I'm leaving the room".
+ iPhone: open the link in Safari > Share > Add to Home Screen.
 
 D. ADMIN (warden only)
- Students do not see the Admin tab. On YOUR phone open:
-   https://YOURUSERNAME.github.io/hostel/#admin
- The Admin tab then stays on that phone. The first PIN you enter becomes your PIN.
- Do not share the #admin link.
+ On YOUR phone open the link with #admin on the end, for example
+   https://YOURUSERNAME.github.io/HOSTEL/#admin
+ Create a PIN. The Admin tab then stays on that phone. Do not share the #admin link.
 
-E. UPDATING LATER
- Upload the changed files again (same names). Change the number in sw.js
- ("hostel-power-v3" to v4) so phones pick up the update.
-
-F. LIMITS
- - Data is stored on each phone only. The warden sees only rooms registered on the warden's phone.
-   Seeing every student's phone needs a shared server.
- - Notifications from the app are not guaranteed when the app is closed. Use the calendar alarm too.
+E. NOTES
+ - Rooms B204, B 204 and B-204 are treated as the same room.
+ - The app needs internet the first time. After that it keeps working with the last data it saw.
+ - SECURITY: the rules above let anyone who has the app read and change rooms. That is fine
+   for a college project. Do not store private information. The admin PIN only hides the
+   dashboard on that phone.
+ - SCALE: a student phone reads and writes only its own room. Only the admin phone (after the PIN)
+   reads all rooms, so hundreds of students fit in Firebase's free plan. Check the limits in your
+   Firebase console (Usage tab) if you go above about 1000 rooms or open the admin dashboard very often.
+ - If the app shows "Setup not finished", firebase-config.js still has PASTE_ values.
+ - If it shows "permission-denied", the rules in step A4 were not published.

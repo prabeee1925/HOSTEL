@@ -71,7 +71,7 @@ details ul{margin:8px 0 0;padding-left:20px}
 <li>The admin (warden) sees each room as: <b>All OFF</b> (done), <b>Waiting</b> (not time yet), <b>Still ON</b> (you said something is ON) or <b>Not confirmed</b> (time is over and nothing was marked).</li>
 <li><b>Already switched OFF but forgot to mark it?</b> Press the green button <b>“I already switched both OFF”</b>. It is on your status box and on the alarm message.</li>
 <li>The app cannot sense the real switches. It trusts what you mark, so the warden can also check a room and press <b>Mark OFF</b>.</li>
-<li>Alarms from the app ring while it is open. For alerts when your phone is locked, use the <b>calendar alarm</b> in Step 3. All data stays on this device.</li>
+<li>Alarms from the app ring while it is open. For alerts when your phone is locked, use the <b>calendar alarm</b> in Step 3. Rooms are saved online, so the warden sees every student.</li>
 </ul>
 </details>
 
@@ -179,11 +179,14 @@ details ul{margin:8px 0 0;padding-left:20px}
 <button class="sec" onclick="logoutAdmin()">Log out</button>
 <button class="dng" onclick="clearAll()">Clear all data</button>
 </div>
-<p class="note">Data is stored in this browser only. To use it across many phones, a shared server is needed (future scope).</p>
+<p class="note">Rooms are saved in a shared online database, so every phone sees the same rooms.</p>
 </div>
 </div>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const TITLE="Smart Hostel Electricity Management";
@@ -195,7 +198,7 @@ const store={
 let storageOK=true;
 try{localStorage.setItem("hx","1");storageOK=localStorage.getItem("hx")==="1";localStorage.removeItem("hx")}catch(e){storageOK=false}
 
-let students=store.get("hostelStudents",[]);
+let students=[];
 let me=store.get("hostelMe","");
 let adminOn=false;
 
@@ -206,8 +209,52 @@ const today=()=>{const d=clock();return d.getFullYear()+"-"+pad(d.getMonth()+1)+
 const minsOf=t=>{const [h,m]=t.split(":").map(Number);return h*60+m};
 const nowMin=()=>{const d=clock();return d.getHours()*60+d.getMinutes()};
 const hhmm=m=>pad(Math.floor(m/60))+":"+pad(m%60);
-const norm=r=>r.trim().toUpperCase().replace(/\s+/g,"");
-const save=()=>store.set("hostelStudents",students);
+const norm=r=>r.trim().toUpperCase().replace(/[\s-]+/g,"");   // B204, B 204 and B-204 are the same room
+/* ---------- shared online database (Firebase Firestore) ---------- */
+let db=null,cloudReady=false,meLoaded=false,unsubMe=null,unsubAdmin=null,adminListening=false;
+const CLOUD=()=>window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.projectId&&!/PASTE/.test(window.FIREBASE_CONFIG.projectId);
+const docId=k=>"r_"+encodeURIComponent(k);
+const clean=s=>JSON.parse(JSON.stringify(s));
+function cloudFail(e){const w=$("storeWarn");w.textContent="Cannot reach the shared database ("+((e&&e.code)||"error")+"). Check the internet and the Firebase setup.";w.classList.remove("hide")}
+function save(x){
+  if(!db)return;
+  [].concat(x===undefined?students:x).forEach(s=>db.collection("rooms").doc(docId(s.key)).set(clean(s)).catch(cloudFail));
+}
+function cloudDelete(list){if(db)list.forEach(s=>db.collection("rooms").doc(docId(s.key)).delete().catch(cloudFail))}
+function startCloud(){
+  const w=$("storeWarn");
+  if(!CLOUD()){w.textContent="Setup not finished: open firebase-config.js and paste your Firebase details (see README).";w.classList.remove("hide");return}
+  if(!window.firebase){w.textContent="Cannot load the online database. Check the internet connection and reload.";w.classList.remove("hide");return}
+  try{
+    firebase.initializeApp(window.FIREBASE_CONFIG);db=firebase.firestore();
+    try{db.enablePersistence({synchronizeTabs:true}).catch(()=>{})}catch(e){}
+    cloudReady=true;listenMe();
+  }catch(e){cloudFail(e)}
+}
+/* A student phone listens to ONE room only (its own). This keeps database reads tiny, even with hundreds of students. */
+function listenMe(){
+  if(unsubMe){unsubMe();unsubMe=null}
+  if(!db||!me||adminListening)return;
+  let first=true;
+  unsubMe=db.collection("rooms").doc(docId(me)).onSnapshot(snap=>{
+    students=snap.exists?[snap.data()]:[];meLoaded=true;
+    rollover();renderStudent(first);first=false;
+  },cloudFail);
+}
+/* Only the admin phone (after the PIN) listens to all rooms. */
+function adminListen(on){
+  if(!db)return;
+  if(unsubAdmin){unsubAdmin();unsubAdmin=null}
+  adminListening=on;
+  if(on){
+    if(unsubMe){unsubMe();unsubMe=null}
+    unsubAdmin=db.collection("rooms").onSnapshot(snap=>{
+      students=snap.docs.map(d=>d.data());meLoaded=true;
+      renderStudent(false);if(adminOn)renderAdmin();
+    },cloudFail);
+  }else{meLoaded=false;students=[];listenMe();renderStudent(true)}
+}
+
 const find=k=>students.find(s=>s.key===k);
 
 const GRACE=5;          // minutes after leaving time before a room counts as Late
@@ -223,14 +270,15 @@ function newStudent(name,room){
 
 /* A new day starts a clean sheet for every room */
 function rollover(){
-  let changed=false;
+  if(adminListening)return;   // the admin phone only reads; each student phone resets its own room
+  const ch=[];
   students.forEach(s=>{
     if(s.date!==today()){
       s.date=today();s.light=null;s.fan=null;s.confirmed=false;s.byAdmin=false;
-      s.warned5=false;s.warnedLeave=false;s.nags=0;s.lastNag=0;changed=true;
+      s.warned5=false;s.warnedLeave=false;s.nags=0;s.lastNag=0;ch.push(s);
     }
   });
-  if(changed)save();
+  if(ch.length)save(ch);
 }
 
 /* ---------- THE RULE: what is this room's status? ----------
@@ -239,7 +287,7 @@ function rollover(){
    3. Not confirmed and time + 5 min passed   -> LATE
    4. Anything else                            -> WAITING                      */
 function statusOf(s){
-  if(s.confirmed)return(s.light==="OFF"&&s.fan==="OFF")?"ALL_OFF":"STILL_ON";
+  if(s.confirmed&&s.date===today())return(s.light==="OFF"&&s.fan==="OFF")?"ALL_OFF":"STILL_ON";
   if(s.leaveTime&&nowMin()>minsOf(s.leaveTime)+GRACE)return "LATE";
   return "WAITING";
 }
@@ -267,7 +315,7 @@ function applyReminder(s,r){
   if(r.kind==="warn5")s.warned5=true;
   if(r.kind==="leave"){s.warned5=true;s.warnedLeave=true;s.lastNag=now}
   if(r.kind==="nag"){s.nags++;s.lastNag=now}
-  save();
+  save(s);
 }
 
 /* ---------- alarm sound + keep screen awake ---------- */
@@ -397,21 +445,32 @@ function showTab(t){
 /* ---------- student ---------- */
 function say(id,text,c){const el=$(id);el.textContent=text;el.className="msg "+(c||"")}
 
-function register(){
+async function register(){
   const name=$("name").value.trim(),raw=$("room").value,key=norm(raw);
   if(!name||!key){say("regMsg","Please enter both your name and your room number.","bad");return}
-  if(find(key)){say("regMsg","This room is already registered. Use “Already registered?” below.","bad");return}
-  students.push(newStudent(name,raw));
-  save();login(key);
+  if(!cloudReady){say("regMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
+  let exists=false;
+  try{exists=(await db.collection("rooms").doc(docId(key)).get()).exists}catch(e){cloudFail(e);return}
+  if(exists){say("regMsg","This room is already registered. Use “Already registered?” below.","bad");return}
+  const s=newStudent(name,raw);
+  save(s);login(key,s);
 }
-function login(k){
+async function login(k,fresh){
   const key=typeof k==="string"?k:norm($("loginRoom").value);
-  if(!find(key)){say("loginMsg","Room not found. Please register first.","bad");return}
+  if(!cloudReady){say("loginMsg","Not connected to the shared database yet. Wait a few seconds and try again.","bad");return}
+  let s=fresh||null;
+  if(!s){
+    try{const sn=await db.collection("rooms").doc(docId(key)).get();if(sn.exists)s=sn.data()}
+    catch(e){cloudFail(e);return}
+  }
+  if(!s){say("loginMsg","Room not found. Please register first.","bad");return}
   me=key;store.set("hostelMe",me);
+  if(!adminListening){students=[s];meLoaded=true}
+  listenMe();
   unlockAudio();keepAwake();
   renderStudent(true);
 }
-function logout(){me="";store.del("hostelMe");dismissBanner();renderStudent(true)}
+function logout(){me="";store.del("hostelMe");dismissBanner();if(!adminListening){students=[];meLoaded=false;if(unsubMe){unsubMe();unsubMe=null}}renderStudent(true)}
 
 function setTime(){
   unlockAudio();keepAwake();
@@ -424,14 +483,14 @@ function setTime(){
   s.warnedLeave=d<=0;      // time already passed today, so the first alarm is tomorrow
   s.nags=d<=0?NAG_MAX:0;   // time already passed: no repeat reminders today either
   s.lastNag=clock().getTime();
-  save();
+  save(s);
   if(d<=0)say("timeMsg","Saved. "+t+" has already passed today, so your first alarm is tomorrow.","ok");
   else say("timeMsg","Saved. You will get an alarm at "+hhmm(Math.max(0,minsOf(t)-5))+" and at "+t+" every day.","ok");
   renderStudent(false);
 }
 function clearTime(){
   const s=find(me);if(!s)return;
-  s.leaveTime="";s.warned5=false;s.warnedLeave=false;s.nags=0;save();
+  s.leaveTime="";s.warned5=false;s.warnedLeave=false;s.nags=0;save(s);
   $("leaveTime").value="";
   say("timeMsg","Leaving time removed. No alarms will ring.","");
   renderStudent(false);
@@ -443,13 +502,13 @@ function choose(item,val){
   s[item]=val;
   if(s.confirmed){s.confirmed=false;say("statusMsg","You changed something, so please press “I'm leaving the room” again.","warn")}
   else say("statusMsg","","");
-  save();renderStudent(false);
+  save(s);renderStudent(false);
 }
 function confirmLeave(){
   const s=find(me);if(!s)return;
   if(!s.light||!s.fan){say("statusMsg","Please choose ON or OFF for both the light and the fan.","bad");return}
   stopAlarm();
-  s.confirmed=true;save();
+  s.confirmed=true;save(s);
   const on=whatIsOn(s);
   if(!on.length){say("statusMsg","Thank you! Everything is OFF. The alarm is stopped.","ok");dismissBanner()}
   else say("statusMsg","Saved, but your "+on.join(" and ")+" is still ON. The admin can see this. Switch it OFF, choose OFF above and press the button again.","warn");
@@ -460,7 +519,7 @@ function confirmLeave(){
 function quickOff(){
   const s=find(me);if(!s)return;
   stopAlarm();
-  s.light="OFF";s.fan="OFF";s.confirmed=true;s.byAdmin=false;save();
+  s.light="OFF";s.fan="OFF";s.confirmed=true;s.byAdmin=false;save(s);
   say("statusMsg","Marked as OFF. Thank you! The alarm is stopped.","ok");
   dismissBanner();renderStudent(false);
 }
@@ -485,8 +544,8 @@ function statusText(s,st){
 }
 function renderStudent(syncInputs){
   const s=find(me);
-  if(me&&!s){me="";store.del("hostelMe")}
-  $("regCard").classList.toggle("hide",!!s);
+  if(me&&!s&&meLoaded){me="";store.del("hostelMe")}
+  $("regCard").classList.toggle("hide",!!s||!!(me&&!meLoaded));
   $("myArea").classList.toggle("hide",!s);
   if(!s)return;
   $("hello").textContent=s.name+" · Room "+s.room;
@@ -525,9 +584,9 @@ function adminLogin(){
     store.set("hostelPin",p);adminOn=true;
   }else if(p===saved)adminOn=true;
   else{say("pinMsg","Wrong PIN.","bad");return}
-  $("pin").value="";say("pinMsg","","");initAdmin();
+  $("pin").value="";say("pinMsg","","");adminListen(true);initAdmin();
 }
-function logoutAdmin(){adminOn=false;initAdmin()}
+function logoutAdmin(){adminOn=false;adminListen(false);initAdmin()}
 
 function renderAdmin(){
   rollover();
@@ -544,15 +603,16 @@ function renderAdmin(){
   const list=$("list");list.textContent="";
   if(!rows.length){const p=document.createElement("p");p.className="msg";p.textContent=all.length?"No matching rooms.":"No registered rooms yet. Press “Add demo rooms” to see an example.";list.appendChild(p)}
   rows.forEach(({s,st})=>{
+    const fr=s.date===today();
     const d=document.createElement("div");d.className="room";
     const l=document.createElement("div");
     const t=document.createElement("b");t.textContent="Room "+s.room+" · "+s.name+(s.demo?" (demo)":"");
     const sp=document.createElement("span");sp.className=cls(st);sp.textContent=LABEL[st];
     const sm=document.createElement("small");
-    sm.textContent="Light: "+(s.light||"not told")+" · Fan: "+(s.fan||"not told")+" · Leaves: "+(s.leaveTime||"not set")+(s.byAdmin?" · checked by admin":"");
+    sm.textContent="Light: "+((fr&&s.light)||"not told")+" · Fan: "+((fr&&s.fan)||"not told")+" · Leaves: "+(s.leaveTime||"not set")+(s.byAdmin?" · checked by admin":"");
     l.append(t,document.createElement("br"),sp,document.createElement("br"),sm);
     const b=document.createElement("button");b.className="sec";b.textContent="Remove";
-    b.onclick=()=>{if(confirm("Remove room "+s.room+"?")){students=students.filter(x=>x!==s);if(me===s.key)logout();save();renderAdmin()}};
+    b.onclick=()=>{if(confirm("Remove room "+s.room+"?")){students=students.filter(x=>x!==s);if(me===s.key)logout();cloudDelete([s]);renderAdmin()}};
     const bx=document.createElement("div");bx.style.cssText="display:flex;gap:6px;flex-wrap:wrap";
     if(st!=="ALL_OFF"){
       const m=document.createElement("button");m.textContent="Mark OFF";
@@ -566,7 +626,7 @@ function renderAdmin(){
 /* the warden checked the room and found everything OFF */
 function adminMarkOff(key){
   const s=find(key);if(!s)return;
-  s.light="OFF";s.fan="OFF";s.confirmed=true;s.byAdmin=true;save();
+  s.light="OFF";s.fan="OFF";s.confirmed=true;s.byAdmin=true;save(s);
   renderAdmin();renderStudent(false);
 }
 
@@ -575,6 +635,7 @@ function addDemo(){
   if(students.some(s=>s.demo))return;
   const n=nowMin(),late=hhmm(Math.max(0,n-30)),soon=hhmm(Math.min(1439,n+60));
   const mk=(name,room,t,light,fan,confirmed)=>{const s=newStudent(name,room);s.demo=true;s.leaveTime=t;s.light=light;s.fan=fan;s.confirmed=confirmed;return s};
+  const made=[];
   [mk("Arun","A-101","08:30","OFF","OFF",true),
    mk("Bala","A-102","08:30","OFF","OFF",true),
    mk("Charan","A-103","09:00","OFF","OFF",true),
@@ -583,22 +644,22 @@ function addDemo(){
    mk("Farook","B-203",late,null,null,false),
    mk("Gokul","C-301",soon,null,null,false),
    mk("Hari","C-302","",null,null,false)
-  ].forEach(s=>{if(!find(s.key))students.push(s)});
-  save();renderAdmin();
+  ].forEach(s=>{if(!find(s.key)){students.push(s);made.push(s)}});
+  save(made);renderAdmin();
 }
-function removeDemo(){students=students.filter(s=>!s.demo);if(me&&!find(me)){me="";store.del("hostelMe")}save();renderAdmin();renderStudent(true)}
+function removeDemo(){const d=students.filter(s=>s.demo);students=students.filter(s=>!s.demo);cloudDelete(d);if(me&&!find(me)){me="";store.del("hostelMe")}renderAdmin();renderStudent(true)}
 
 function exportCsv(){
   const q=v=>{let t=String(v);if(/^[=+\-@]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"'};  // stops spreadsheet formula tricks
   const lines=[["Date","Room","Student","Light","Fan","Leaving time","Status","Checked by admin"].map(q).join(",")];
-  students.forEach(s=>lines.push([s.date,s.room,s.name,s.light||"",s.fan||"",s.leaveTime||"",LABEL[statusOf(s)],s.byAdmin?"Yes":""].map(q).join(",")));
+  students.forEach(s=>lines.push([s.date,s.room,s.name,(s.date===today()&&s.light)||"",(s.date===today()&&s.fan)||"",s.leaveTime||"",LABEL[statusOf(s)],s.byAdmin?"Yes":""].map(q).join(",")));
   const blob=new Blob([lines.join("\n")],{type:"text/csv"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="hostel-"+today()+".csv";
   document.body.appendChild(a);a.click();a.remove();
 }
 function clearAll(){
   if(!confirm("Delete ALL hostel records? This cannot be undone."))return;
-  students=[];me="";store.del("hostelStudents");store.del("hostelMe");renderAdmin();renderStudent(true);
+  cloudDelete(students.slice());students=[];me="";store.del("hostelMe");renderAdmin();renderStudent(true);
 }
 
 /* ---------- start ---------- */
@@ -607,6 +668,7 @@ if("serviceWorker" in navigator&&location.protocol.indexOf("http")===0){
   navigator.serviceWorker.addEventListener("message",e=>{if(e.data&&e.data.type==="quickoff")quickOff()});
 }
 if(!storageOK)$("storeWarn").classList.remove("hide");
+startCloud();
 rollover();renderStudent(true);
 /* Admin is hidden from students. Open the page once with #admin on the end (on the warden's phone only) to unlock it. */
 function unlockAdmin(){
