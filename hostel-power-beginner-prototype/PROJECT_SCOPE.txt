@@ -1,0 +1,27 @@
+REVISED PROTOTYPE SCOPE
+
+Project title: Smart Hostel Electricity Management - Beginner Hardware Demonstration
+Demo room: A-193
+Demo user: Prabi
+
+FIRST WORKING DELIVERABLE
+- One ESP32 controller.
+- One LED representing the room light.
+- One small 5V DC fan representing the room fan.
+- One phone-friendly local control page.
+- Light ON/OFF, Fan ON/OFF, and Turn BOTH OFF controls.
+- Shared output state for phones connected to the same ESP32.
+
+REMOVED FROM FIRST BUILD TO KEEP IT ACHIEVABLE
+- Student occupancy tracking.
+- Automatic cutoff based on all students leaving.
+- LDR and vibration sensors.
+- Firebase-to-ESP32 integration.
+- Multiple rooms.
+- Real hostel mains electricity.
+
+WHY THIS IS A BETTER FIRST DEMO
+Each control produces a visible physical result immediately. Students can demonstrate the complete path: phone -> Wi-Fi -> ESP32 -> LED/relay -> mini fan. It requires no cloud credentials, no database setup, no sensor calibration and no mains wiring.
+
+LIMITATION
+The page reports ESP32 output states, not independently measured appliance power. The demonstration also does not yet include student login, shared room member profiles, scheduled alarms or a real occupancy sensor. Those can be added in later stages after the physical control works reliably.

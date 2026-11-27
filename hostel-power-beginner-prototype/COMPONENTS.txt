@@ -1,0 +1,13 @@
+HOSTEL POWER - BEGINNER HARDWARE LIST (ONE ROOM A-193)
+
+1 x ESP32 DevKit (classic ESP32-WROOM) - main controller
+1 x LED - room light representation
+1 x 220-330 ohm resistor - LED current limiting
+1 x 5V single-channel relay module with 3.3V-compatible trigger - fan switching
+1 x 5V mini DC fan - room fan representation
+1 x regulated 5V DC supply - fan/relay supply, suitable for the fan's rated current
+1 x breadboard
+1 set jumper wires
+1 x USB data cable
+
+Use only the low-voltage demonstration. No mains relay wiring is part of this beginner build.
